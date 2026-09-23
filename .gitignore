@@ -1,0 +1,9 @@
+# Runtime data: never in Git.
+# Game files downloaded by SteamCMD, and the world / logs / box64.rc.
+server/
+data/
+
+# Local secrets. Only .env.example is tracked.
+.env
+
+*.log

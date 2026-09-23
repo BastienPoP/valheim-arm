@@ -1,0 +1,78 @@
+# Box64 emulator settings, copied to /data/config/box64.rc on first start.
+# Everything is commented out: with nothing uncommented, Box64's own defaults
+# apply, and those are the fastest ones.
+#
+# A variable already set in the container environment (docker run -e, or the
+# compose "environment:" block) WINS over this file. The server log prints, at
+# every start, which value came from where.
+#
+# After editing: docker compose restart valheim
+#
+# Full documentation: https://github.com/ptitSeb/box64/blob/main/docs/USAGE.md
+
+
+### Compatibility ladder
+#
+# A heavily multithreaded program such as a Unity server can be sensitive to the
+# memory model, especially on an ARMv8.0-A CPU without the LSE atomic
+# instructions (the Cortex-A72 of a Raspberry Pi 4, for instance). If you hit
+# instability -- crashes, a corrupted world, inconsistent behaviour -- climb the
+# ladder BELOW IN ORDER, one rung at a time, testing after each: every rung
+# costs performance.
+#
+#   1. BOX64_DYNAREC_STRONGMEM=1      then 2, then 3
+#   2. BOX64_DYNAREC_BIGBLOCK=1       then 0
+#   3. BOX64_DYNAREC_CALLRET=0
+#   4. BOX64_DYNAREC_SAFEFLAGS=2
+
+
+### Memory model
+
+# Emulate the strong x86 memory model. 0 = fast, 3 = safest.
+# Values: 0 1 2 3 4 -- default: 0
+#BOX64_DYNAREC_STRONGMEM=1
+
+# Only emit aligned atomics. Values: 0 1 -- default: 0
+#BOX64_DYNAREC_ALIGNED_ATOMICS=1
+
+
+### Code generation
+
+# Size of the blocks compiled by the JIT. Bigger = faster, less forgiving.
+# Values: 0 1 2 3 -- default: 2
+#BOX64_DYNAREC_BIGBLOCK=1
+
+# CALL/RET opcode optimisation. Values: 0 1 2 3 -- default: 2
+#BOX64_DYNAREC_CALLRET=0
+
+# Flag emulation on CALL/RET and edge cases. Values: 0 1 2 -- default: 1
+#BOX64_DYNAREC_SAFEFLAGS=2
+
+# Wait for a block to be compiled (0 = interpret it in the meantime).
+# Values: 0 1 -- default: 1
+#BOX64_DYNAREC_WAIT=1
+
+
+### Floating point
+
+# Fast NaN handling. Values: 0 1 -- default: 1
+#BOX64_DYNAREC_FASTNAN=0
+
+# Fast rounding. Values: 0 1 2 -- default: 1
+#BOX64_DYNAREC_FASTROUND=0
+
+
+### Misc
+
+# Expose AVX to the emulated program. Values: 0 1 2 -- default: 2 on ARM64
+#BOX64_AVX=1
+
+# Intercept malloc operators. Values: 0 1 2 -- default: 0
+#BOX64_MALLOC_HACK=1
+
+# Box64 verbosity in the log. Values: 0 1 2 3 -- default: 0
+# Useful to diagnose a crash, very verbose.
+#BOX64_LOG=1
+
+# Hide the Box64 banner at start-up. Values: 0 1 -- default: 0
+#BOX64_NOBANNER=1

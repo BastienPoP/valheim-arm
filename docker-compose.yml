@@ -1,0 +1,80 @@
+# Valheim dedicated server on ARM64.
+#
+#   cp .env.example .env     # then set SERVER_PASSWORD
+#   docker compose up -d
+#   docker compose logs -f   # the world is ready at "ZDOMan.LoadChunks done"
+#
+# First start downloads ~2 GB of game files and takes a few minutes.
+
+services:
+  valheim:
+    image: ghcr.io/bastienpop/valheim-arm:latest
+    # To build locally instead of pulling, comment out "image:" above and
+    # uncomment this. On a Raspberry Pi 4 / Cortex-A72 host, add
+    # "args: [BOX64_PACKAGE=box64-rpi4]" for the CPU-tuned Box64 build.
+    #build: .
+    container_name: valheim
+    restart: unless-stopped
+
+    ports:
+      - "2456:2456/udp"   # game
+      - "2457:2457/udp"   # game
+      - "2458:2458/udp"   # Steam query
+    # Valheim uses UDP only. TCP forwarding is never needed.
+
+    volumes:
+      # Game files, redownloaded by SteamCMD if lost. ~2 GB.
+      - ./server:/opt/valheim
+      # World, adminlist.txt, logs and config/box64.rc. THIS is what to back up.
+      - ./data:/data
+
+    environment:
+      # --- Server ---------------------------------------------------------
+      SERVER_NAME: ${SERVER_NAME:-Valheim}
+      SERVER_WORLD: ${SERVER_WORLD:-Dedicated}
+      SERVER_PASSWORD: ${SERVER_PASSWORD:?set SERVER_PASSWORD in .env}
+      # 0 = unlisted, join by IP. 1 = listed in the community browser.
+      SERVER_PUBLIC: ${SERVER_PUBLIC:-0}
+
+      # Save the world every 30 min, keep 4 generations, first backup after 2 h
+      # then every 12 h. These are the game's own defaults.
+      SERVER_SAVE_INTERVAL: 1800
+      SERVER_BACKUPS: 4
+      SERVER_BACKUP_SHORT: 7200
+      SERVER_BACKUP_LONG: 43200
+
+      # SteamCMD checks for updates on every start, so the server always runs the
+      # latest version. false = fast start, but the game is never updated again.
+      UPDATE_ON_START: "true"
+      # Re-verify the 2 GB of game files on every start. Robust, but slow.
+      # Set to false once the install is known good.
+      STEAM_VALIDATE: "true"
+
+      # Log timestamps and the data/logs/valheim_DD-MM-YYYY.log filenames follow
+      # this timezone. Without it the container stays on UTC.
+      TZ: ${TZ:-UTC}
+
+      # CAUTION: SERVER_PRESET and SERVER_MODIFIERS OVERWRITE the settings stored
+      # in the world (the ones set in game with setworldmodifier). Leave them
+      # unset to touch nothing.
+      #SERVER_PRESET: normal
+      #SERVER_MODIFIERS: combat=hard,raids=none
+      #SERVER_SET_KEYS: nomap,playerevents
+      #SERVER_SIMULATION_DISTANCE: 10
+      # Anything not modelled above, appended verbatim to the command line:
+      #SERVER_EXTRA_ARGS: ""
+
+      # Crossplay is NOT SUPPORTED and does not work under Box64. The flag
+      # exists only to experiment. See the Crossplay section of the README.
+      #SERVER_CROSSPLAY: "true"
+
+      # --- Emulator -------------------------------------------------------
+      # With nothing here, Box64's defaults apply (the fastest ones). A variable
+      # set here wins over data/config/box64.rc. See that file for the
+      # compatibility ladder to climb if the server is unstable.
+      #BOX64_DYNAREC_STRONGMEM: "1"
+      #BOX64_DYNAREC_BIGBLOCK: "1"
+
+    # Valheim saves the world on SIGTERM. A normal shutdown takes under 10 s;
+    # 40 s leaves room on a slow disk before Docker sends SIGKILL.
+    stop_grace_period: 40s
