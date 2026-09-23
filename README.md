@@ -141,14 +141,77 @@ already stored in your world.
 
 | Variable | Example | Meaning |
 |---|---|---|
-| `SERVER_PRESET` | `hard` | `casual`, `easy`, `normal`, `hard`, `hardcore`, `immersive`, `hammer` |
-| `SERVER_MODIFIERS` | `combat=hard,raids=none` | Comma-separated `key=value` pairs |
-| `SERVER_SET_KEYS` | `nomap,playerevents` | Comma-separated global keys |
-| `SERVER_RESET_MODIFIERS` | `false` | `true` resets every modifier to default |
+| `SERVER_PRESET` | `hard` | A whole difficulty profile, applied in one go |
+| `SERVER_MODIFIERS` | `combat=hard,raids=none` | Individual settings, comma-separated `key=value` |
+| `SERVER_SET_KEYS` | `nomap` | Global keys, comma-separated |
+| `SERVER_RESET_MODIFIERS` | `false` | `true` resets every modifier to its default |
 
-Modifier keys: `combat` (`veryeasy`…`veryhard`), `deathpenalty`
-(`casual`…`hardcore`), `resources` (`muchless`…`most`), `raids`
-(`none`…`muchmore`), `portals` (`casual`, `hard`, `veryhard`).
+**Presets** — `casual`, `easy`, `normal`, `hard`, `hardcore`, `immersive`,
+`hammer`. A preset sets every modifier at once; a `SERVER_MODIFIERS` entry
+applied alongside it takes precedence over the preset's value for that key.
+
+**Modifiers** — the common keys and their scales:
+
+| Key | Values |
+|---|---|
+| `combat` | `veryeasy`, `easy`, `normal`, `hard`, `veryhard` |
+| `deathpenalty` | `casual`, `veryeasy`, `easy`, `normal`, `hard`, `hardcore` |
+| `resources` | `muchless`, `less`, `normal`, `more`, `muchmore`, `most` |
+| `raids` | `none`, `muchless`, `less`, `normal`, `more`, `muchmore` |
+| `portals` | `casual`, `normal`, `hard`, `veryhard` |
+
+The compact form used here is expanded into the game's own two-token
+`-modifier <key> <value>` syntax, so `combat=hard,raids=none` becomes
+`-modifier combat hard -modifier raids none`. An entry that is not `key=value` is
+skipped with a warning in the log rather than silently dropped.
+
+### Global keys (`SERVER_SET_KEYS`)
+
+A **global key** is a world-wide flag, not a difficulty setting. Two kinds
+matter, and they behave very differently:
+
+**World behaviour** — these change how the world plays:
+
+| Key | Effect |
+|---|---|
+| `nomap` | No map and no minimap for anyone on the server |
+| `noportals` | Portals cannot be built or used |
+
+**Progression** — these mark a boss or creature as already defeated, which is
+what unlocks the next tier of content, spawns, and trader stock:
+
+`defeated_eikthyr`, `defeated_gdking` (The Elder), `defeated_bonemass`,
+`defeated_dragon` (Moder), `defeated_goblinking` (Yagluth), `KilledTroll`,
+`KilledBat`, `killed_surtling`, `Hildir1`, `Hildir2`, `Hildir3`.
+
+Setting a progression key is how you open a fresh world at a later tier — for a
+test server, or to let a group skip content they have already cleared elsewhere.
+It cannot be undone per-key from the command line; `resetkeys` is the only reset,
+and it clears **all** of them.
+
+```yaml
+environment:
+  SERVER_SET_KEYS: nomap,defeated_eikthyr
+```
+
+> [!NOTE]
+> The lists above were read out of the game assembly of build **l-1.0.15**, so
+> they are what this server version actually accepts, not what a wiki page
+> remembers. They are not guaranteed exhaustive, and Iron Gate can change them in
+> any patch. The authoritative reference is the **Valheim Dedicated Server
+> Manual**, a PDF shipped inside the server files themselves — it lands at
+> `server/Valheim Dedicated Server Manual.pdf` once SteamCMD has run. See also
+> the [Valheim wiki](https://valheim.fandom.com/wiki/Console_Commands) for the
+> community-maintained list.
+
+### Other parameters
+
+| Variable | Notes |
+|---|---|
+| `SERVER_SIMULATION_DISTANCE` | Radius, in game units, that the server actively simulates. The default suits most servers; raising it costs CPU on every tick and is the first thing to lower on a small ARM host. |
+| `SERVER_INSTANCE_ID` | Distinguishes several servers that share one Steam identity. Only needed when you run more than one server on the same host. |
+| `SERVER_CONSOLE` | Adds `-console`. The server has no interactive terminal here, so this mostly affects what it logs. |
+| `SERVER_EXTRA_ARGS` | Escape hatch, split on whitespace and appended verbatim to the command line. Anything the image does not model — including flags added by a future patch — goes here. |
 
 ### Updates
 
