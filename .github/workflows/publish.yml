@@ -27,7 +27,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # GHCR rejects uppercase in image names, and GitHub usernames may have it.
       - name: Compute image names
@@ -35,13 +35,20 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          ghcr="ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
-          images="${ghcr}"
-          if [ -n "${DOCKERHUB_USERNAME}" ]; then
-            images="${images}"$'\n'"docker.io/${DOCKERHUB_USERNAME}/valheim-arm"
+          # Registries reject uppercase, and a secret pasted with a trailing
+          # newline would otherwise split one image name into two broken tags.
+          clean() { printf '%s' "$1" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'; }
+
+          images="ghcr.io/$(clean "${GITHUB_REPOSITORY}")"
+
+          dockerhub_user="$(clean "${DOCKERHUB_USERNAME:-}")"
+          if [ -n "${dockerhub_user}" ]; then
+            images="$(printf '%s\n%s' "${images}" "docker.io/${dockerhub_user}/valheim-arm")"
             echo "dockerhub=true" >> "$GITHUB_OUTPUT"
           fi
-          { echo "images<<EOF"; echo "${images}"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+          echo "Images to publish:"; printf '%s\n' "${images}" | sed 's/^/  /'
+          { echo "images<<EOF"; printf '%s\n' "${images}"; echo "EOF"; } >> "$GITHUB_OUTPUT"
 
       - name: Docker metadata
         id: meta

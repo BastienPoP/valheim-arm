@@ -3,7 +3,8 @@
 # Valheim has no ARM build. It does have an official x86_64 *Linux* server, and
 # that is what runs here, under Box64. Box64 emulates only the game's own code:
 # calls into the system libraries (libc, pthread, libstdc++, libm) are redirected
-# to their native ARM64 versions. There is no Wine, no X server, no Win32 layer.
+# to their native ARM64 versions. There is no Windows compatibility layer and no
+# X server.
 #
 # Build:
 #   docker build -t valheim-arm .

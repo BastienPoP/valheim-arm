@@ -6,10 +6,11 @@ Valheim has no ARM build. It does have an official **x86_64 Linux** dedicated
 server, and this image runs it under [Box64](https://github.com/ptitSeb/box64).
 Box64 emulates only the game's own code: calls into the system libraries (libc,
 pthread, libstdc++, libm) are redirected to their **native ARM64** versions.
-There is no Wine, no X server, no Win32 layer.
+There is no Windows compatibility layer and no X server, so the server runs as a
+single process tree.
 
-The result is a **375 MB** image running Valheim **1.0** on a Raspberry Pi 4,
-an Ampere/Graviton VM, an Apple Silicon Docker Desktop, or any other ARM64 host.
+The result is a **375 MB** image running Valheim **1.0** on a Raspberry Pi 4, an
+Ampere/Graviton VM, an Apple Silicon Docker Desktop, or any other ARM64 host.
 
 > [!IMPORTANT]
 > **This image is lightly tested.** It has been running one private world on one
@@ -258,44 +259,6 @@ restart.
 | Players cannot join from outside | Test on the LAN first with `<host-ip>:2456`, then check the UDP port forwarding. |
 | The download stalls or the start never finishes | Disk full: `df -h`. |
 | `port 2456 already allocated` | Another Valheim server is still running. |
-
-## How it compares to the Wine approach
-
-The common ARM64 recipe runs the **Windows** server under Wine under Box64. This
-image runs the **Linux** server under Box64 alone. Measured on the same world and
-the same 3-vCPU Cortex-A72 VM:
-
-| | Windows server under Wine | Linux server under Box64 |
-|---|---|---|
-| Image size | 4.36 GB | **375 MB** |
-| RAM | 3.16 GB | **1.81 GB** |
-| Processes in the container | 109 | **38** |
-| Container start → playable world | ~5 min | **2 min 41 s** |
-
-The reason is simple: `wine` is **itself an x86_64 binary**, so Box64 had to
-emulate Wine *on top of* the game, and the game's system calls went through Win32
-before reaching a glibc that was also emulated.
-
-```
-      WINDOWS SERVER UNDER WINE                LINUX SERVER (this image)
-
- ░░ valheim_server.exe        PE x86_64   ░░ valheim_server.x86_64   ELF x86_64
- ░░ UnityPlayer.dll                       ░░ UnityPlayer.so
-            │                                         │
- ░░ kernel32 · ntdll · user32   Win32                  │
- ░░ wineserver + 8 processes                           │   no Win32 layer
- ░░ Xvfb  (dummy X server)                             │
-            │                                          │
- ██ Box64   JIT x86_64 → ARM64             ██ Box64   JIT x86_64 → ARM64
-    emulates EVERYTHING above                 emulates the game only
-            │                                          │
- ░░ x86_64 glibc, emulated too             ██ glibc · pthread · libstdc++ ARM64
-                                              redirected to native by Box64
-            │                                          │
- ██ ARM64 Linux kernel                     ██ ARM64 Linux kernel
-
- ░░ = x86 code to emulate                  ██ = native ARM64 code
-```
 
 ## Credits
 
