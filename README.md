@@ -131,13 +131,7 @@ already stored in your world.
 | `SERVER_CONSOLE` | `false` | Adds `-console`. |
 | `SERVER_EXTRA_ARGS` | *(empty)* | Anything not modelled here, appended verbatim. |
 
-### Difficulty: presets and modifiers
-
-> [!CAUTION]
-> `SERVER_PRESET` and `SERVER_MODIFIERS` **overwrite** the settings stored in the
-> world — including the ones you set in game with `setworldmodifier`. They are
-> empty by default, and that is deliberate. Set them only if you want the
-> container, not the world, to be the source of truth.
+### World settings
 
 | Variable | Example | Meaning |
 |---|---|---|
@@ -146,63 +140,29 @@ already stored in your world.
 | `SERVER_SET_KEYS` | `nomap` | Global keys, comma-separated |
 | `SERVER_RESET_MODIFIERS` | `false` | `true` resets every modifier to its default |
 
-**Presets** — `casual`, `easy`, `normal`, `hard`, `hardcore`, `immersive`,
-`hammer`. A preset sets every modifier at once; a `SERVER_MODIFIERS` entry
-applied alongside it takes precedence over the preset's value for that key.
+> [!CAUTION]
+> `SERVER_PRESET` and `SERVER_MODIFIERS` **overwrite** the settings stored in the
+> world — including the ones you set in game with `setworldmodifier`. They are
+> empty by default, and that is deliberate. Set them only if you want the
+> container, not the world, to be the source of truth.
+>
+> `SERVER_SET_KEYS` likewise writes global keys into the world, and a progression
+> key such as `defeated_eikthyr` cannot be removed one by one: `resetkeys` is the
+> only reset, and it clears **all** of them.
 
-**Modifiers** — the common keys and their scales:
+The accepted values are the game's own, and Iron Gate can change them in any
+patch, so this README does not try to mirror them. Two references:
 
-| Key | Values |
-|---|---|
-| `combat` | `veryeasy`, `easy`, `normal`, `hard`, `veryhard` |
-| `deathpenalty` | `casual`, `veryeasy`, `easy`, `normal`, `hard`, `hardcore` |
-| `resources` | `muchless`, `less`, `normal`, `more`, `muchmore`, `most` |
-| `raids` | `none`, `muchless`, `less`, `normal`, `more`, `muchmore` |
-| `portals` | `casual`, `normal`, `hard`, `veryhard` |
+- the **Valheim Dedicated Server Manual**, a PDF shipped inside the server files
+  themselves — it lands at `server/Valheim Dedicated Server Manual.pdf` once
+  SteamCMD has run, and always matches the version you are actually running;
+- the [Valheim wiki](https://valheim.fandom.com/wiki/Console_Commands) for the
+  community-maintained list.
 
-The compact form used here is expanded into the game's own two-token
-`-modifier <key> <value>` syntax, so `combat=hard,raids=none` becomes
-`-modifier combat hard -modifier raids none`. An entry that is not `key=value` is
-skipped with a warning in the log rather than silently dropped.
-
-### Global keys (`SERVER_SET_KEYS`)
-
-A **global key** is a world-wide flag, not a difficulty setting. Two kinds
-matter, and they behave very differently:
-
-**World behaviour** — these change how the world plays:
-
-| Key | Effect |
-|---|---|
-| `nomap` | No map and no minimap for anyone on the server |
-| `noportals` | Portals cannot be built or used |
-
-**Progression** — these mark a boss or creature as already defeated, which is
-what unlocks the next tier of content, spawns, and trader stock:
-
-`defeated_eikthyr`, `defeated_gdking` (The Elder), `defeated_bonemass`,
-`defeated_dragon` (Moder), `defeated_goblinking` (Yagluth), `KilledTroll`,
-`KilledBat`, `killed_surtling`, `Hildir1`, `Hildir2`, `Hildir3`.
-
-Setting a progression key is how you open a fresh world at a later tier — for a
-test server, or to let a group skip content they have already cleared elsewhere.
-It cannot be undone per-key from the command line; `resetkeys` is the only reset,
-and it clears **all** of them.
-
-```yaml
-environment:
-  SERVER_SET_KEYS: nomap,defeated_eikthyr
-```
-
-> [!NOTE]
-> The lists above were read out of the game assembly of build **l-1.0.15**, so
-> they are what this server version actually accepts, not what a wiki page
-> remembers. They are not guaranteed exhaustive, and Iron Gate can change them in
-> any patch. The authoritative reference is the **Valheim Dedicated Server
-> Manual**, a PDF shipped inside the server files themselves — it lands at
-> `server/Valheim Dedicated Server Manual.pdf` once SteamCMD has run. See also
-> the [Valheim wiki](https://valheim.fandom.com/wiki/Console_Commands) for the
-> community-maintained list.
+`SERVER_MODIFIERS` takes the compact `key=value` form and expands it into the
+game's two-token `-modifier <key> <value>` syntax, so `combat=hard,raids=none`
+becomes `-modifier combat hard -modifier raids none`. An entry that is not
+`key=value` is skipped with a warning in the log rather than silently dropped.
 
 ### Other parameters
 
