@@ -324,7 +324,36 @@ image whether or not anything here changes. Each build is then scanned with
 Trivy, and fails on a *fixable* HIGH or CRITICAL finding — unfixed ones are left
 to report rather than to block, since no rebuild can clear them.
 
-Two things are deliberately not done:
+### Known unfixed findings
+
+A scan of this image reports two HIGH findings that **cannot be fixed by anyone**,
+here or elsewhere:
+
+| CVE | Package | Flaw |
+|---|---|---|
+| [CVE-2026-95619](https://security-tracker.debian.org/tracker/CVE-2026-95619) | `libstdc++6`, `libstdc++6-amd64-cross` | Integer overflow in the aligned `operator new`, on very large allocation sizes |
+| [CVE-2026-102010](https://security-tracker.debian.org/tracker/CVE-2026-102010) | `libstdc++6`, `libstdc++6-amd64-cross` | Use-after-free in `erase_if` on a binary-heap `priority_queue` |
+
+Both are in libstdc++, and Debian's security tracker marks them **unfixed in
+every release including unstable**: there is no patched gcc to upgrade to. Nor
+can the packages be dropped — `libstdc++6` is a base dependency, and
+`libstdc++6-amd64-cross` is what satisfies Box64's amd64 dependency without
+enabling the amd64 multiarch.
+
+Reaching either flaw means getting the *application* to allocate near
+`SIZE_MAX`, or to call `erase_if` on a `priority_queue`, from attacker-controlled
+input. Nothing in a Valheim server's network path offers that. The CVSS scores
+are generic to libstdc++, not to this image.
+
+This is why the CI gate uses `ignore-unfixed`: these two would otherwise fail
+every build forever, which teaches you to ignore the job rather than to read it.
+They are listed here instead, so that "no fixable findings" does not quietly mean
+"no findings". A scanner that reports unfixed CVEs, such as the one on Docker
+Hub, will keep showing them until Debian ships a patched gcc.
+
+### Deliberately not done
+
+Two things:
 
 - **The server runs as root in the container.** Dropping to an unprivileged user
   would be a real improvement, but it changes the ownership expected on the two
