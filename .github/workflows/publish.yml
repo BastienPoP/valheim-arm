@@ -109,9 +109,15 @@ jobs:
       # Reports what is left, and fails the build on a fixable HIGH/CRITICAL —
       # "fixable" being the point: an unfixed CVE is not something a rebuild can
       # do anything about, so failing on it would only teach us to ignore the job.
+      # TRIVY_PLATFORM is not an input of the action: it is read by the trivy
+      # binary itself, which the action runs as a subprocess. Without it trivy
+      # resolves the multi-platform index to its own default, linux/amd64, finds
+      # no such child in an arm64-only image and fails before scanning anything.
       - name: Scan the image
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
         with:
           image-ref: ${{ steps.names.outputs.ghcr }}:${{ steps.meta.outputs.version }}
           severity: HIGH,CRITICAL
