@@ -71,9 +71,18 @@ docker run -d --name valheim \
 | GitHub Container Registry | `ghcr.io/bastienpop/valheim-arm:latest` |
 | Docker Hub | `bastienpop/valheim-arm:latest` |
 
-Tags: `latest`, plus a `X.Y.Z` tag per release. The image is `linux/arm64` only —
-it is an ARM64 emulation image and has no reason to exist on x86_64, where you
-should run the server natively.
+The image is `linux/arm64` only — it is an ARM64 emulation image and has no
+reason to exist on x86_64, where you should run the server natively.
+
+| Tag | What it tracks |
+|---|---|
+| `latest` | The current state of `main`, **rebuilt and republished every Monday** so that new Debian security updates reach it. What you want unless you have a reason not to. |
+| `X.Y` | The newest patch of that minor release. Moves when `X.Y.Z+1` comes out. |
+| `X.Y.Z` | One exact build, **never rebuilt**. Pin this when you want the image to stop changing under you — and accept that it stops receiving security updates too. |
+
+Pinning `X.Y.Z` and never looking again is the one combination to avoid: it is
+the same trap this image fell into before the weekly rebuild existed (see
+[Security](#security)).
 
 ### Building it yourself
 

@@ -64,10 +64,18 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.names.outputs.images }}
+          # "latest" has to move in two cases, and {{is_default_branch}} alone
+          # only covers the first:
+          #   - a push to main, which includes the weekly rebuild. Without it the
+          #     security refresh would never reach anyone pulling "latest";
+          #   - a v* tag, so that cutting a release updates "latest" in the same
+          #     run instead of waiting for some later push to main.
+          # X.Y.Z stays immutable on purpose: whoever pins a version is asking
+          # for exactly that build, not for a weekly one.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           labels: |
             org.opencontainers.image.title=valheim-arm
             org.opencontainers.image.description=Valheim dedicated server on ARM64, running the official x86_64 Linux build under Box64
