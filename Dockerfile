@@ -29,7 +29,16 @@ ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 # dependency without enabling the amd64 multiarch (which would pull in a whole
 # extra apt index). libatomic1 and libpulse0 are the libraries the server manual
 # asks for.
+# "upgrade" matters: the base image is rebuilt on its own schedule, so by the
+# time this builds it is usually a few weeks behind on security updates. Without
+# it the image ships known-vulnerable packages that Debian has already fixed.
+#
+# curl is NOT here. It is only needed to fetch SteamCMD at build time, and it is
+# installed and purged inside that one layer below, so it never reaches the
+# published image — curl and libcurl are among the most frequently patched
+# packages in a Debian base, and nothing at runtime uses them.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends \
       "${BOX64_PACKAGE}" \
       libgcc-s1-amd64-cross \
@@ -38,7 +47,6 @@ RUN apt-get update \
       libpulse0 \
       libpulse-mainloop-glib0 \
       ca-certificates \
-      curl \
       procps \
       tzdata \
  && rm -rf /var/lib/apt/lists/*
@@ -69,7 +77,20 @@ RUN set -e; \
 # natively, and the x86 binary then is not emulated at all.
 # Exit code 42 means "I updated myself, run me again", so the bootstrap needs
 # several passes before it is complete.
+#
+# Everything below happens in ONE layer, so what is removed at the end is really
+# gone from the image rather than merely hidden by a later layer:
+#   - curl, installed only to fetch the tarball, then purged;
+#   - siteserverui/, 36 MB of WINDOWS DLLs (ffmpeg.dll, libEGL.dll, libGLESv2.dll
+#     and the api-ms-win-* stubs). It is SteamCMD's graphical front end: dead
+#     weight on a headless Linux server, and exactly the kind of vendored binary
+#     that vulnerability scanners flag and that apt can never patch;
+#   - package/, SteamCMD's own update cache, which it refills by itself when it
+#     needs to.
+# SteamCMD was verified to still log in and read app metadata without the two.
 RUN set -e; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl; \
     mkdir -p /opt/steamcmd; \
     curl -sSfL "${STEAMCMD_URL}" | tar -xz -C /opt/steamcmd; \
     for i in 1 2 3 4; do \
@@ -78,7 +99,10 @@ RUN set -e; \
         [ "$rc" = 42 ] || exit "$rc"; \
     done; \
     test -x /opt/steamcmd/linux64/steamcmd; \
-    rm -rf /root/Steam/logs
+    rm -rf /root/Steam/logs /opt/steamcmd/siteserverui /opt/steamcmd/package; \
+    apt-get purge -y curl; \
+    apt-get autoremove -y --purge; \
+    rm -rf /var/lib/apt/lists/*
 
 COPY box64.rc.example /opt/defaults/box64.rc.example
 COPY entrypoint.sh /entrypoint.sh

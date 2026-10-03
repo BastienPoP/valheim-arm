@@ -9,7 +9,12 @@ pthread, libstdc++, libm) are redirected to their **native ARM64** versions.
 There is no Windows compatibility layer and no X server, so the server runs as a
 single process tree.
 
-The result is a **375 MB** image running Valheim **1.0** on a Raspberry Pi 4, an
+The image carries only what the server needs at runtime: `curl` is used to fetch
+SteamCMD at build time and purged in the same layer, and SteamCMD's 36 MB
+graphical front end — a pile of Windows DLLs, on a headless Linux server — is
+dropped. See [Security](#security).
+
+The result is a **295 MB** image running Valheim **1.0** on a Raspberry Pi 4, an
 Ampere/Graviton VM, an Apple Silicon Docker Desktop, or any other ARM64 host.
 
 > [!IMPORTANT]
@@ -282,6 +287,43 @@ restart.
 | Players cannot join from outside | Test on the LAN first with `<host-ip>:2456`, then check the UDP port forwarding. |
 | The download stalls or the start never finishes | Disk full: `df -h`. |
 | `port 2456 already allocated` | Another Valheim server is still running. |
+
+## Security
+
+Images age badly on their own: Debian keeps publishing security updates after a
+build, so an image that is never rebuilt collects known vulnerabilities without
+a line of this repository changing. Three things keep that in check.
+
+**Built patched.** The build runs `apt-get upgrade`, so it does not inherit
+whatever the base image was missing on the day it was tagged.
+
+**Built small.** Every package present is a package that can need patching, so
+the image ships only what the server uses at runtime:
+
+| Dropped | Why |
+|---|---|
+| `curl` and its dependency chain — `libcurl`, GnuTLS, Kerberos (×3), LDAP, librtmp, nghttp2, brotli | Needed only to download SteamCMD at build time. Installed and purged inside one layer, so it is gone from the image, not merely hidden by a later layer. Nothing at runtime uses it, and SteamCMD brings its own networking. |
+| `/opt/steamcmd/siteserverui`, 36 MB | SteamCMD's graphical front end: `ffmpeg.dll`, `libEGL.dll`, `libGLESv2.dll` and the `api-ms-win-*` stubs. Windows binaries, on a headless Linux server. Vendored code apt can never patch, and exactly what scanners flag. |
+| `/opt/steamcmd/package`, 40 MB | SteamCMD's own update cache. It refills it by itself when it needs to. |
+
+That is 20 fewer packages and 80 MB less image than the first release, and
+SteamCMD was verified to still log in and read app metadata without any of it.
+
+**Rebuilt weekly.** A scheduled job rebuilds and republishes every Monday,
+without the layer cache, so new Debian security updates reach the published
+image whether or not anything here changes. Each build is then scanned with
+Trivy, and fails on a *fixable* HIGH or CRITICAL finding — unfixed ones are left
+to report rather than to block, since no rebuild can clear them.
+
+Two things are deliberately not done:
+
+- **The server runs as root in the container.** Dropping to an unprivileged user
+  would be a real improvement, but it changes the ownership expected on the two
+  volumes and would break every existing install on upgrade. It belongs in a
+  major version, with migration notes.
+- **The base image is not pinned by digest.** Pinning gives a reproducible build
+  but freezes the base at a known state, which is the opposite of what matters
+  here. The weekly rebuild is the trade chosen instead.
 
 ## Credits
 

@@ -18,6 +18,13 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # An image goes stale on its own: Debian keeps publishing security updates
+  # after the build, so an image that is never rebuilt accumulates known
+  # vulnerabilities without a single line of this repository changing.
+  # Rebuilding weekly picks them up. 04:17 on Mondays, off the hour to avoid
+  # the crowd of jobs scheduled on it.
+  schedule:
+    - cron: "17 4 * * 1"
 
 jobs:
   publish:
@@ -39,7 +46,9 @@ jobs:
           # newline would otherwise split one image name into two broken tags.
           clean() { printf '%s' "$1" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'; }
 
-          images="ghcr.io/$(clean "${GITHUB_REPOSITORY}")"
+          ghcr="ghcr.io/$(clean "${GITHUB_REPOSITORY}")"
+          echo "ghcr=${ghcr}" >> "$GITHUB_OUTPUT"
+          images="${ghcr}"
 
           dockerhub_user="$(clean "${DOCKERHUB_USERNAME:-}")"
           if [ -n "${dockerhub_user}" ]; then
@@ -83,6 +92,7 @@ jobs:
       # A pull request builds without pushing: the image is checked, nothing is
       # published. linux/arm64 only -- on x86_64 you would run the server natively.
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -90,5 +100,21 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # The weekly rebuild exists to pick up new Debian packages, so it must
+          # not be served the previous week's apt layer from the cache.
+          no-cache: ${{ github.event_name == 'schedule' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Reports what is left, and fails the build on a fixable HIGH/CRITICAL —
+      # "fixable" being the point: an unfixed CVE is not something a rebuild can
+      # do anything about, so failing on it would only teach us to ignore the job.
+      - name: Scan the image
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.names.outputs.ghcr }}:${{ steps.meta.outputs.version }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
