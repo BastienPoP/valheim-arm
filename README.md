@@ -74,6 +74,13 @@ docker run -d --name valheim \
 The image is `linux/arm64` only — it is an ARM64 emulation image and has no
 reason to exist on x86_64, where you should run the server natively.
 
+> [!WARNING]
+> **2.0.0 is a breaking change.** The server used to run as root and now runs as
+> UID 1000, so bind mounts created by 1.x belong to root and the server will stop
+> on start rather than silently fail. Under Docker, `sudo chown -R 1000:1000` the
+> two directories. Under rootless Podman, add `--userns=keep-id` instead and
+> change no ownership at all. See [Ownership](#ownership).
+
 | Tag | What it tracks |
 |---|---|
 | `latest` | The current state of `main`, **rebuilt and republished every Monday** so that new Debian security updates reach it. What you want unless you have a reason not to. |
