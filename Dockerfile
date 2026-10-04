@@ -20,6 +20,14 @@ FROM debian:13-slim
 ARG BOX64_PACKAGE=box64
 ARG STEAMCMD_URL=https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
 
+# The server does not run as root. 1000 is the first UID a Linux distribution
+# hands to a human, so on a single-user host the bind-mounted directories
+# already belong to it and nothing has to be chowned. Override both to match
+# another account:
+#   docker build --build-arg UID=1001 --build-arg GID=1001 .
+ARG UID=1000
+ARG GID=1000
+
 ENV DEBIAN_FRONTEND=noninteractive
 # C.UTF-8 is built into glibc: no locales package to install, and accented server
 # names are still handled correctly.
@@ -50,6 +58,11 @@ RUN apt-get update \
       procps \
       tzdata \
  && rm -rf /var/lib/apt/lists/*
+
+# nologin, no password: this account exists to own files and run one process,
+# never to be logged into.
+RUN groupadd -g "${GID}" valheim \
+ && useradd -u "${UID}" -g "${GID}" -d /home/valheim -m -s /usr/sbin/nologin valheim
 
 # Box64 redirects the PulseAudio libraries to their native ARM64 versions, but it
 # looks them up under their UNVERSIONED name (libpulse-mainloop-glib.so), which
@@ -99,7 +112,7 @@ RUN set -e; \
         [ "$rc" = 42 ] || exit "$rc"; \
     done; \
     test -x /opt/steamcmd/linux64/steamcmd; \
-    rm -rf /root/Steam/logs /opt/steamcmd/siteserverui /opt/steamcmd/package; \
+    rm -rf /root/Steam /opt/steamcmd/siteserverui /opt/steamcmd/package; \
     apt-get purge -y curl; \
     apt-get autoremove -y --purge; \
     rm -rf /var/lib/apt/lists/*
@@ -107,6 +120,17 @@ RUN set -e; \
 COPY box64.rc.example /opt/defaults/box64.rc.example
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# What has to be writable at runtime, beyond the two volumes:
+#   /opt/steamcmd  SteamCMD updates ITSELF on almost every start, in place. Left
+#                  root-owned, the server would fail on its first update.
+#   /home/valheim  SteamCMD keeps its own state in $HOME/Steam, and the
+#                  entrypoint puts the steamclient.so symlink under $HOME/.steam.
+# The two volume mount points are created and chowned so that an anonymous or
+# named volume inherits the right owner. A BIND mount does not: the host
+# directory keeps its own ownership, which is why it must belong to this UID.
+RUN mkdir -p /opt/valheim /data \
+ && chown -R valheim:valheim /opt/steamcmd /home/valheim /opt/valheim /data
 
 # SERVER_DIR: game files, downloaded by SteamCMD (volume).
 # DATA_DIR:   world, adminlist.txt, logs, config/box64.rc (volume).
@@ -143,5 +167,8 @@ ENV UPDATE_ON_START=true \
 
 VOLUME ["/opt/valheim", "/data"]
 EXPOSE 2456-2458/udp
+
+ENV HOME=/home/valheim
+USER valheim
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -9,10 +9,8 @@ pthread, libstdc++, libm) are redirected to their **native ARM64** versions.
 There is no Windows compatibility layer and no X server, so the server runs as a
 single process tree.
 
-The image carries only what the server needs at runtime: `curl` is used to fetch
-SteamCMD at build time and purged in the same layer, and SteamCMD's 36 MB
-graphical front end — a pile of Windows DLLs, on a headless Linux server — is
-dropped. See [Security](#security).
+The image carries only what the server needs at runtime, and the server itself
+runs unprivileged. See [Security](#security).
 
 The result is a **295 MB** image running Valheim **1.0** on a Raspberry Pi 4, an
 Ampere/Graviton VM, an Apple Silicon Docker Desktop, or any other ARM64 host.
@@ -52,6 +50,8 @@ and enter `<host-ip>:2456`.
 
 ### Without compose
 
+The two directories must belong to UID 1000 — see [Ownership](#ownership).
+
 ```bash
 docker run -d --name valheim \
   -p 2456-2458:2456-2458/udp \
@@ -80,8 +80,8 @@ reason to exist on x86_64, where you should run the server natively.
 | `X.Y` | The newest patch of that minor release. Moves when `X.Y.Z+1` comes out. |
 | `X.Y.Z` | One exact build, **never rebuilt**. Pin this when you want the image to stop changing under you — and accept that it stops receiving security updates too. |
 
-Pinning `X.Y.Z` and never looking again is the one combination to avoid: it is
-the same trap this image fell into before the weekly rebuild existed (see
+Pinning `X.Y.Z` and never looking again is the combination to avoid: the build
+stops changing, and so does its set of known vulnerabilities (see
 [Security](#security)).
 
 ### Building it yourself
@@ -116,10 +116,43 @@ set of **numbered generations** (`_main.N.db2`, `_main.N.fwl2`, `_main.N.chunks`
 > create a **new world**. Check `ls data/worlds_local/<world>/` afterwards.
 
 Both directories are bind-mounted in the compose file, so they appear as
-`./server` and `./data` next to it. The container runs as root, so the files it
-creates are owned by root on the host — that is the usual Docker behaviour and
-is why the compose file uses bind mounts rather than named volumes, so you can
-see and back up your world without entering the container.
+`./server` and `./data` next to it — bind mounts rather than named volumes, so
+you can read and back up your world without entering the container.
+
+### Ownership
+
+The server runs as **UID 1000**, not as root, so both directories have to belong
+to UID 1000 on the host. On a single-user machine that is already your own
+account and there is nothing to do; `docker compose up -d` creates them with the
+right owner.
+
+Two cases need a step:
+
+**Your account is not 1000.** Build with your own IDs, and the image's user
+changes to match:
+
+```bash
+docker build --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t valheim-arm .
+```
+
+**The directories already exist and belong to someone else** — most likely
+because you are coming from an image that ran as root:
+
+```bash
+sudo chown -R 1000:1000 ./server ./data
+```
+
+The server checks both directories before it does anything else and stops with
+that command spelled out if it cannot write, rather than failing later with
+something unhelpful.
+
+> [!NOTE]
+> **Under rootless Podman, do not chown anything.** Rootless Podman already maps
+> container UID 0 to your unprivileged account, so your directories are not owned
+> by UID 1000 as the container sees them. Map your own account in instead and
+> leave the files alone — `--userns=keep-id`, or `UserNS=keep-id` in a Quadlet
+> unit. Chowning to 1000 there would hand your own files to a subordinate UID you
+> cannot read.
 
 ## Configuration
 
@@ -299,69 +332,31 @@ restart.
 
 ## Security
 
-Images age badly on their own: Debian keeps publishing security updates after a
-build, so an image that is never rebuilt collects known vulnerabilities without
-a line of this repository changing. Three things keep that in check.
+**Runs unprivileged.** The server runs as UID 1000, so a flaw in Valheim, Box64
+or SteamCMD does not start out as root in the container. See
+[Ownership](#ownership) for what that asks of the two bind mounts.
 
-**Built patched.** The build runs `apt-get upgrade`, so it does not inherit
-whatever the base image was missing on the day it was tagged.
+**Built patched.** The build runs `apt-get upgrade`, so the image does not
+inherit whatever the base was missing on the day it was tagged.
 
 **Built small.** Every package present is a package that can need patching, so
-the image ships only what the server uses at runtime:
+the image carries only what the server uses at runtime. `curl` fetches SteamCMD
+at build time and is purged inside that same layer, along with the dependency
+chain it brings in — nothing at runtime uses it, SteamCMD having its own
+networking. SteamCMD's graphical front end and its update cache go too: the
+front end is of no use to a headless server, and the cache is something SteamCMD
+refills by itself.
 
-| Dropped | Why |
-|---|---|
-| `curl` and its dependency chain — `libcurl`, GnuTLS, Kerberos (×3), LDAP, librtmp, nghttp2, brotli | Needed only to download SteamCMD at build time. Installed and purged inside one layer, so it is gone from the image, not merely hidden by a later layer. Nothing at runtime uses it, and SteamCMD brings its own networking. |
-| `/opt/steamcmd/siteserverui`, 36 MB | SteamCMD's graphical front end: `ffmpeg.dll`, `libEGL.dll`, `libGLESv2.dll` and the `api-ms-win-*` stubs. Windows binaries, on a headless Linux server. Vendored code apt can never patch, and exactly what scanners flag. |
-| `/opt/steamcmd/package`, 40 MB | SteamCMD's own update cache. It refills it by itself when it needs to. |
+**Rebuilt weekly.** Debian keeps publishing security updates after a build, so an
+image that is never rebuilt falls behind without a line of this repository
+changing. A scheduled job rebuilds and republishes every Monday, without the
+layer cache. Each build is scanned with Trivy and fails on a *fixable* HIGH or
+CRITICAL finding; findings with no available fix are reported rather than
+blocking, since no rebuild can clear them.
 
-That is 20 fewer packages and 80 MB less image than the first release, and
-SteamCMD was verified to still log in and read app metadata without any of it.
-
-**Rebuilt weekly.** A scheduled job rebuilds and republishes every Monday,
-without the layer cache, so new Debian security updates reach the published
-image whether or not anything here changes. Each build is then scanned with
-Trivy, and fails on a *fixable* HIGH or CRITICAL finding — unfixed ones are left
-to report rather than to block, since no rebuild can clear them.
-
-### Known unfixed findings
-
-A scan of this image reports two HIGH findings that **cannot be fixed by anyone**,
-here or elsewhere:
-
-| CVE | Package | Flaw |
-|---|---|---|
-| [CVE-2026-95619](https://security-tracker.debian.org/tracker/CVE-2026-95619) | `libstdc++6`, `libstdc++6-amd64-cross` | Integer overflow in the aligned `operator new`, on very large allocation sizes |
-| [CVE-2026-102010](https://security-tracker.debian.org/tracker/CVE-2026-102010) | `libstdc++6`, `libstdc++6-amd64-cross` | Use-after-free in `erase_if` on a binary-heap `priority_queue` |
-
-Both are in libstdc++, and Debian's security tracker marks them **unfixed in
-every release including unstable**: there is no patched gcc to upgrade to. Nor
-can the packages be dropped — `libstdc++6` is a base dependency, and
-`libstdc++6-amd64-cross` is what satisfies Box64's amd64 dependency without
-enabling the amd64 multiarch.
-
-Reaching either flaw means getting the *application* to allocate near
-`SIZE_MAX`, or to call `erase_if` on a `priority_queue`, from attacker-controlled
-input. Nothing in a Valheim server's network path offers that. The CVSS scores
-are generic to libstdc++, not to this image.
-
-This is why the CI gate uses `ignore-unfixed`: these two would otherwise fail
-every build forever, which teaches you to ignore the job rather than to read it.
-They are listed here instead, so that "no fixable findings" does not quietly mean
-"no findings". A scanner that reports unfixed CVEs, such as the one on Docker
-Hub, will keep showing them until Debian ships a patched gcc.
-
-### Deliberately not done
-
-Two things:
-
-- **The server runs as root in the container.** Dropping to an unprivileged user
-  would be a real improvement, but it changes the ownership expected on the two
-  volumes and would break every existing install on upgrade. It belongs in a
-  major version, with migration notes.
-- **The base image is not pinned by digest.** Pinning gives a reproducible build
-  but freezes the base at a known state, which is the opposite of what matters
-  here. The weekly rebuild is the trade chosen instead.
+**Not pinned by digest.** Pinning the base image would make the build
+reproducible but freeze the base at one state, which is the opposite of what
+matters here. The weekly rebuild is the trade made instead.
 
 ## Credits
 

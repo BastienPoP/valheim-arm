@@ -10,9 +10,13 @@ services:
   valheim:
     image: ghcr.io/bastienpop/valheim-arm:latest
     # To build locally instead of pulling, comment out "image:" above and
-    # uncomment this. On a Raspberry Pi 4 / Cortex-A72 host, add
-    # "args: [BOX64_PACKAGE=box64-rpi4]" for the CPU-tuned Box64 build.
-    #build: .
+    # uncomment this. Useful for two build args: BOX64_PACKAGE=box64-rpi4 for the
+    # Cortex-A72-tuned Box64, and UID/GID if your account is not 1000.
+    #build:
+    #  context: .
+    #  args:
+    #    UID: "1000"
+    #    GID: "1000"
     container_name: valheim
     restart: unless-stopped
 
@@ -22,6 +26,12 @@ services:
       - "2458:2458/udp"   # Steam query
     # Valheim uses UDP only. TCP forwarding is never needed.
 
+    # The server runs as UID 1000, so both bind mounts must belong to UID 1000 on
+    # the host. On a single-user machine that is already your account and these
+    # are created correctly. Coming from an image that ran as root, the
+    # directories still belong to root:
+    #   sudo chown -R 1000:1000 ./server ./data
+    # The server checks this before anything else and tells you if it cannot write.
     volumes:
       # Game files, redownloaded by SteamCMD if lost. ~2 GB.
       - ./server:/opt/valheim

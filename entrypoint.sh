@@ -26,6 +26,35 @@ trim() {
 }
 
 # ---------------------------------------------------------------------------
+# 0. Can we write where we need to?
+# ---------------------------------------------------------------------------
+# The server runs as an unprivileged user. A bind-mounted host directory keeps
+# the host's ownership, so one that belongs to root (or to another account) is
+# simply not writable here. Checking first turns that into one clear line
+# instead of a confusing failure several steps later.
+
+check_writable() {
+    local dir="$1" label="$2"
+    mkdir -p "${dir}" 2>/dev/null
+    if [ ! -d "${dir}" ] || ! { : > "${dir}/.write-test"; } 2>/dev/null; then
+        log "ERROR: ${dir} (${label}) is not writable as uid $(id -u):$(id -g)."
+        log ""
+        log "       This server does NOT run as root. If you are upgrading from an"
+        log "       image that did, the directory still belongs to root. On the host:"
+        log ""
+        log "         sudo chown -R $(id -u):$(id -g) <the directory mounted here>"
+        log ""
+        log "       Under rootless Podman, map your own account into the container"
+        log "       instead, and leave the ownership alone:  UserNS=keep-id"
+        exit 1
+    fi
+    rm -f "${dir}/.write-test"
+}
+
+check_writable "${DATA_DIR}" "DATA_DIR"
+check_writable "${SERVER_DIR}" "SERVER_DIR"
+
+# ---------------------------------------------------------------------------
 # 1. Emulator settings
 # ---------------------------------------------------------------------------
 # A BOX64_* variable already present in the environment (docker run -e,
