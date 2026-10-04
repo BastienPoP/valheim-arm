@@ -113,6 +113,7 @@ RUN set -e; \
     done; \
     test -x /opt/steamcmd/linux64/steamcmd; \
     rm -rf /root/Steam /opt/steamcmd/siteserverui /opt/steamcmd/package; \
+    chown -R valheim:valheim /opt/steamcmd; \
     apt-get purge -y curl; \
     apt-get autoremove -y --purge; \
     rm -rf /var/lib/apt/lists/*
@@ -121,16 +122,18 @@ COPY box64.rc.example /opt/defaults/box64.rc.example
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# What has to be writable at runtime, beyond the two volumes:
-#   /opt/steamcmd  SteamCMD updates ITSELF on almost every start, in place. Left
-#                  root-owned, the server would fail on its first update.
-#   /home/valheim  SteamCMD keeps its own state in $HOME/Steam, and the
-#                  entrypoint puts the steamclient.so symlink under $HOME/.steam.
-# The two volume mount points are created and chowned so that an anonymous or
-# named volume inherits the right owner. A BIND mount does not: the host
-# directory keeps its own ownership, which is why it must belong to this UID.
+# The volume mount points, owned by the server's account so that a named or
+# anonymous volume inherits it. A BIND mount does not: the host directory keeps
+# its own ownership, which is the one thing this image asks of the user.
+#
+# Only these two empty directories are chowned here. /opt/steamcmd -- which has
+# to be writable because SteamCMD updates itself in place on almost every start
+# -- is chowned inside the layer that creates it: a "chown -R" in a later layer
+# rewrites every file it touches into that layer, which added 125 MB to the image
+# for nothing. /home/valheim needs no chown at all, useradd -m already creating
+# it owned by the account.
 RUN mkdir -p /opt/valheim /data \
- && chown -R valheim:valheim /opt/steamcmd /home/valheim /opt/valheim /data
+ && chown valheim:valheim /opt/valheim /data
 
 # SERVER_DIR: game files, downloaded by SteamCMD (volume).
 # DATA_DIR:   world, adminlist.txt, logs, config/box64.rc (volume).
