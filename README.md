@@ -16,12 +16,12 @@ The result is a **295 MB** image running Valheim **1.0** on a Raspberry Pi 4, an
 Ampere/Graviton VM, an Apple Silicon Docker Desktop, or any other ARM64 host.
 
 > [!IMPORTANT]
-> **This image is lightly tested.** It has been running one private world on one
-> machine — a 3-vCPU Cortex-A72 VM with 14 GB of RAM — and nothing more. It has
-> not been tested on Raspberry Pi hardware, on other ARM CPUs, with mods, or
-> with more than a handful of players. **Crossplay does not work** — see
-> [Crossplay](#crossplay). Treat this image as working-but-unproven, keep your
-> own backups, and please [open an issue](../../issues) with what you find.
+> **This image is lightly tested.** It has been exercised on a single server,
+> with one world and a handful of players, and not much beyond that. It has not
+> been tested on Raspberry Pi hardware, across a range of ARM CPUs, with mods, or
+> at any scale. **Crossplay does not work** — see [Crossplay](#crossplay). Treat
+> it as working-but-unproven, keep your own backups, and please
+> [open an issue](../../issues) with what you find.
 
 ---
 
@@ -229,6 +229,7 @@ becomes `-modifier combat hard -modifier raids none`. An entry that is not
 |---|---|---|
 | `UPDATE_ON_START` | `true` | SteamCMD checks for a new server version on every start. |
 | `STEAM_VALIDATE` | `true` | Re-verify the 2 GB of game files on every start. |
+| `STEAM_RESET_ON_FAILURE` | `true` | Recover an install that has fallen too far behind to update itself. See below. |
 
 With `UPDATE_ON_START=true` the server is always on the latest version, but it
 only updates **when the container restarts** — after a Valheim patch, restart it
@@ -236,6 +237,32 @@ or clients will refuse to connect with a version mismatch.
 
 `STEAM_VALIDATE=true` is what repairs a damaged install; it also adds a minute or
 two to every start. Turning it off once the install is known good is safe.
+
+### An install that is too far behind to update itself
+
+Once a patch has shipped, an install a few builds old stops being able to update,
+and says so in a way that reads like a passing glitch while being permanent:
+
+```
+Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
+Error! App '896660' state is 0x6 after update job.
+```
+
+Steam will not hand an anonymous login the request code for a manifest that is no
+longer the branch's current one. Updating means diffing against the manifest you
+have installed — which, after a patch, is exactly the manifest Steam refuses. So
+every start fails identically, and the server keeps running an old build with
+nothing but a warning in the log. A server left alone can sit several patches
+behind until clients can no longer join it.
+
+`STEAM_RESET_ON_FAILURE=true` (the default) recovers from this: on that specific
+error, the local install state is cleared so that SteamCMD evaluates the current
+manifest from scratch rather than diffing from the refused one, and the update is
+retried once with `validate`. Since validate reuses the files already on disk,
+this is a verification pass over the install rather than a fresh download of it —
+it costs a few minutes, not the full 2 GB.
+
+Set it to `false` to be left on the old build with a warning instead.
 
 ### Emulator
 
@@ -284,8 +311,8 @@ Under Box64 it does not come up. Two things stand in the way:
 
 1. **`libparty.so` never loads.** PlayFab Party is an x86_64 plugin that links
    against libogg, and Box64 0.3.4 has no native wrapper for it. Shipping the
-   ARM64 `libogg0`, or an x86_64 `libogg.so.0` on `BOX64_LD_LIBRARY_PATH`, was
-   tried here — the `ogg_*` symbols still fail to relocate either way.
+   ARM64 `libogg0`, and an x86_64 `libogg.so.0` on `BOX64_LD_LIBRARY_PATH`, have
+   both been tried — the `ogg_*` symbols still fail to relocate either way.
 2. **PlayFab registration is reported broken.** From **box64 0.4.0** onwards the
    registration never completes; see
    [ptitSeb/box64#4403](https://github.com/ptitSeb/box64/issues/4403).

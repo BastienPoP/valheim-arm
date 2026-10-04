@@ -110,6 +110,9 @@ mkdir -p "${SERVER_DIR}" "${DATA_DIR}"
 # Box64 is invoked on the SteamCMD BINARY, never on steamcmd.sh: given a script
 # it re-execs natively, and the x86 binary is then not emulated at all.
 # The 64-bit binary has been present since the bootstrap done at build time.
+STEAMCMD_LOG="$(mktemp)"
+trap 'rm -f "${STEAMCMD_LOG}"' EXIT
+
 run_steamcmd() {
     local exe ldp attempt=0 rc=0
     # "validate" re-checks the 2 GB of game files on every start. It is what
@@ -141,7 +144,9 @@ run_steamcmd() {
             +app_info_update 1 \
             +app_info_print "${VALHEIM_SERVER_APPID}" \
             +app_update "${update_args[@]}" \
-            +quit 2>&1 | grep --line-buffered -vE '^[[:space:]]*("|\{|\})'
+            +quit 2>&1 \
+            | grep --line-buffered -vE '^[[:space:]]*("|\{|\})' \
+            | tee "${STEAMCMD_LOG}"
         rc=${PIPESTATUS[0]}
         # 42: SteamCMD updated itself and asks to be run again.
         [ "${rc}" -ne 42 ] && break
@@ -150,14 +155,50 @@ run_steamcmd() {
     return "${rc}"
 }
 
+# An install left behind by a few patches cannot update itself, and says so in a
+# way that looks like a transient glitch while being permanent:
+#
+#   Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
+#   Error! App '896660' state is 0x6 after update job.
+#
+# Steam refuses to hand an anonymous login the request code for a manifest that
+# is no longer the branch's current one. Updating means diffing against the
+# manifest currently installed -- which, once a patch has shipped, is exactly
+# the manifest Steam will not serve. So every start fails the same way, forever,
+# and the server keeps running an old build with only a warning in the log.
+#
+# Dropping the local manifest makes SteamCMD evaluate the current one from
+# scratch instead of diffing from the refused one. "validate" then reuses the
+# files already on disk, so this is a verification pass over the install rather
+# than a fresh download of it.
+recover_stale_install() {
+    local manifest="${SERVER_DIR}/steamapps/appmanifest_${VALHEIM_SERVER_APPID}.acf"
+    log "SteamCMD cannot update this install: Steam no longer serves the manifest"
+    log "it is installed from, so there is nothing to compute an update against."
+    log "Clearing the local install state and verifying against the current build."
+    log "This takes a few minutes. Set STEAM_RESET_ON_FAILURE=false to skip it."
+    rm -f "${manifest}"
+    rm -rf "${SERVER_DIR}/steamapps/downloading/${VALHEIM_SERVER_APPID}"
+    STEAM_VALIDATE=true run_steamcmd
+}
+
 if [ "${UPDATE_ON_START:-true}" = "true" ]; then
     log "SteamCMD: checking the server (app ${VALHEIM_SERVER_APPID}, Linux depot)"
     run_steamcmd
     steamcmd_rc=$?
+
+    if [ "${steamcmd_rc}" -ne 0 ] \
+       && [ "${STEAM_RESET_ON_FAILURE:-true}" = "true" ] \
+       && grep -q "state is 0x6 after update job" "${STEAMCMD_LOG}" 2>/dev/null; then
+        recover_stale_install
+        steamcmd_rc=$?
+    fi
+
     if [ "${steamcmd_rc}" -eq 0 ]; then
         log "SteamCMD finished"
     else
         log "WARNING: SteamCMD exited with code ${steamcmd_rc}"
+        log "         The server will start on the build already installed."
     fi
 else
     log "UPDATE_ON_START=false: skipping SteamCMD"

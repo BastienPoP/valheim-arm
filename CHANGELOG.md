@@ -3,6 +3,21 @@
 `latest` tracks `main` and is rebuilt weekly for security updates; a `X.Y.Z` tag
 is one fixed build and is never rebuilt. See the README for what each tag means.
 
+## [2.1.0] - 2026-10-04
+
+### Added
+
+- Automatic recovery for an install that has fallen too far behind to update
+  itself. Steam refuses an anonymous login the request code for a manifest that
+  is no longer current, so once a patch has shipped, every update of an older
+  install fails with `state is 0x6 after update job` — permanently, with only a
+  warning in the log, while the server keeps running the old build.
+
+  On that error the local install state is now cleared and the update retried
+  once with `validate`, which reuses the files on disk: a verification pass
+  rather than a fresh 2 GB download. Set `STEAM_RESET_ON_FAILURE=false` to keep
+  the old behaviour.
+
 ## [2.0.0] - 2026-10-04
 
 ### Changed
@@ -56,5 +71,6 @@ update-on-start, world backups and a tunable Box64 profile.
 
 Published as `latest` only; this version was never tagged in git.
 
+[2.1.0]: https://github.com/BastienPoP/valheim-arm/releases/tag/v2.1.0
 [2.0.0]: https://github.com/BastienPoP/valheim-arm/releases/tag/v2.0.0
 [1.1.0]: https://github.com/BastienPoP/valheim-arm/releases/tag/v1.1.0

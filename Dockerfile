@@ -146,6 +146,7 @@ ENV SERVER_DIR=/opt/valheim \
 # world. They are empty by default, and that is deliberate.
 ENV UPDATE_ON_START=true \
     STEAM_VALIDATE=true \
+    STEAM_RESET_ON_FAILURE=true \
     SERVER_NAME=Valheim \
     SERVER_WORLD=Dedicated \
     SERVER_PASSWORD= \
